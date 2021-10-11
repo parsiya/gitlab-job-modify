@@ -1,0 +1,38 @@
+variables:
+  GIT_DEPTH: 1                               # Create a shallow copy
+  BRANCH_NAME: "test"                        # Name of the branch to modify
+  BOT_NAME: "GitLab Runner Bot"              # Bot's name that appears in the commit log
+  BOT_EMAIL: "gitlab-runner-bot@example.net" # Bot's email, not really important
+  COMMIT_MESSAGE: "Commit from runner "      # Part of the commit message
+
+# create a file named after the last commit's hash.
+.modify: &modify |
+  echo "CI_JOB_ID: ${CI_JOB_ID}" > $CI_COMMIT_SHA.txt
+
+# push the repository
+# based on https://gitlab.com/taleodor/sample-helm-cd/-/blob/master/.gitlab-ci.yml
+.push: &push |
+  git status
+  lines=$(git status -s | wc -l)
+  if [ $lines -gt 0 ];then
+    echo "committing"
+    git config --global user.name "${BOT_NAME}"
+    git config --global user.email "${BOT_EMAIL}"
+    git add .
+    git commit -m "${COMMIT_MESSAGE} ${CI_RUNNER_ID}"
+    echo "git push -o ci.skip 'https://whatever:${GIT_PUSH_TOKEN}@${CI_REPOSITORY_URL#*@}' ${BRANCH_NAME}"
+    git push -o ci.skip "https://whatever:${GIT_PUSH_TOKEN}@${CI_REPOSITORY_URL#*@}" $BRANCH_NAME
+  else
+    echo "no change, nothing to commit"
+  fi
+
+modify-repo:
+  image: alpine:latest
+  before_script:
+    - apk add bash git          # add bash and git (probably not needed)
+    - git fetch
+    - git checkout $BRANCH_NAME # checkout the test branch
+    - cd $CI_PROJECT_DIR        # go into the repo
+  script:
+    - *modify                   # run the modify script and create the file
+    - *push                     # run the push script and push the changes
